@@ -339,6 +339,7 @@ impl<'app> WgpuWinitApp<'app> {
             window: Some(Arc::clone(&window)),
             raw_display_handle: window.display_handle().map(|h| h.as_raw()),
             raw_window_handle: window.window_handle().map(|h| h.as_raw()),
+            embedded_views: integration.frame.embedded_views().clone(),
         };
         let app = {
             profiling::scope!("user_app_creator");
@@ -347,6 +348,7 @@ impl<'app> WgpuWinitApp<'app> {
 
         let mut viewport_from_window = HashMap::default();
         viewport_from_window.insert(window.id(), ViewportId::ROOT);
+        super::viewport_hooks::with(|hooks| hooks.window_created(ViewportId::ROOT, &window));
 
         let mut viewports = Viewports::default();
         viewports.insert(
@@ -889,7 +891,13 @@ impl WgpuWinitRunning<'_> {
         );
 
         // Prune dead viewports:
-        viewports.retain(|id, _| active_viewports_ids.contains(id));
+        viewports.retain(|id, _| {
+            let keep = active_viewports_ids.contains(id);
+            if !keep {
+                super::viewport_hooks::with(|hooks| hooks.window_destroyed(*id));
+            }
+            keep
+        });
         viewport_from_window.retain(|_, id| active_viewports_ids.contains(id));
         painter.gc_viewports(&active_viewports_ids);
 
@@ -1000,7 +1008,9 @@ impl WgpuWinitRunning<'_> {
                 let physical_size = viewport_id
                     .and_then(|id| shared.viewports.get(&id))
                     .and_then(|viewport| viewport.window.as_ref())
-                    .map_or(*physical_size, |window| window.inner_size());
+                    .map_or(*physical_size, |window| {
+                        egui_wgpu::winit::surface_size(window)
+                    });
 
                 // Resize with 0 width and height is used by winit to signal a minimize event on Windows.
                 // See: https://github.com/rust-windowing/winit/issues/208
@@ -1129,6 +1139,7 @@ impl Viewport {
         match egui_winit::create_window(egui_ctx, event_loop, &self.builder) {
             Ok(window) => {
                 windows_id.insert(window.id(), viewport_id);
+                super::viewport_hooks::with(|hooks| hooks.window_created(viewport_id, &window));
 
                 let window = Arc::new(window);
 
@@ -1254,6 +1265,8 @@ fn render_immediate_viewport(
             .map(|(id, viewport)| (*id, viewport.info.clone()))
             .collect();
         input.time = Some(beginning.elapsed().as_secs_f64());
+        let egui_ctx = egui_ctx.clone();
+        super::viewport_hooks::with(|hooks| hooks.raw_input(&egui_ctx, &mut input));
         input
     };
 
@@ -1306,13 +1319,23 @@ fn render_immediate_viewport(
     }
 
     let clipped_primitives = egui_ctx.tessellate(shapes, pixels_per_point);
+
+    let mut screenshot_commands = vec![];
+    viewport.actions_requested.retain(|cmd| {
+        if let ActionRequested::Screenshot(callback) = cmd {
+            screenshot_commands.push(callback.clone());
+            false
+        } else {
+            true
+        }
+    });
     painter.paint_and_update_textures(
         ids.this,
         pixels_per_point,
         [0.0, 0.0, 0.0, 0.0],
         &clipped_primitives,
         &mut viewport.pending_delta,
-        vec![],
+        screenshot_commands,
         window,
     );
 
@@ -1336,7 +1359,13 @@ pub(crate) fn remove_viewports_not_in(
     let active_viewports_ids: ViewportIdSet = viewport_output.keys().copied().collect();
 
     // Prune dead viewports:
-    viewports.retain(|id, _| active_viewports_ids.contains(id));
+    viewports.retain(|id, _| {
+        let keep = active_viewports_ids.contains(id);
+        if !keep {
+            super::viewport_hooks::with(|hooks| hooks.window_destroyed(*id));
+        }
+        keep
+    });
     viewport_from_window.retain(|_, id| active_viewports_ids.contains(id));
     painter.gc_viewports(&active_viewports_ids);
 }

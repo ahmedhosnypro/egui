@@ -7,8 +7,13 @@ This file is updated upon each release.
 Changes since the last release can be found at <https://github.com/emilk/egui/compare/latest...HEAD> or by running the `scripts/generate_changelog.py` script.
 
 
+## Unreleased
+### ⭐ Added
+* Add `NativeOptions::viewport_hooks` (`ViewportHooks`): per-viewport callbacks for native window creation/removal and for each viewport's raw input before egui processes it, including immediate viewports
+
 ## 0.37.0 - 2026-10-15
 ### ⭐ Added
+* Add `system_fonts` feature (on by default) for rendering any glyph and colored emoji using the fonts installed on the system. Enable it if you use `default-features = false` [#8512](https://github.com/emilk/egui/pull/8512) by [@emilk](https://github.com/emilk)
 * Add option to turn off the default clipboard keyboard shortcuts in egui-winit and eframe [#5615](https://github.com/emilk/egui/pull/5615) by [@YgorSouza](https://github.com/YgorSouza)
 * Add `Frame::set_traffic_lights_position` for macOS custom title bars [#8494](https://github.com/emilk/egui/pull/8494) by [@martenbjork-rerun](https://github.com/martenbjork-rerun)
 
